@@ -20,11 +20,6 @@
   "publishConfig": {
     "access": "public"
   },
-  "husky": {
-    "hooks": {
-      "pre-commit": "./scripts/precommit.sh"
-    }
-  },
   "scripts": {
     "build": "webpack --progress",
     "build:ci": "webpack",
