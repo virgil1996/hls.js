@@ -31,6 +31,7 @@ export default class FragmentLoader {
     frag: Fragment,
     onProgress?: FragmentLoadProgressCallback
   ): Promise<FragLoadedData> {
+    // 这里加载 ts 资源
     const url = frag.url;
     if (!url) {
       return Promise.reject(

@@ -120,6 +120,7 @@ class TSDemuxer implements Demuxer {
     // scan 1000 first bytes
     const scanwindow = Math.min(1000, data.length - 3 * 188);
     let i = 0;
+    // 每个 ts packet 以固定的同步字节起始，值为 0x47
     while (i < scanwindow) {
       // a TS fragment should contain at least 3 TS packets, a PAT, a PMT, and one PID, each starting with 0x47
       if (
@@ -216,6 +217,7 @@ class TSDemuxer implements Demuxer {
     this.aacLastPTS = null;
   }
 
+  // mux 混流，demux 解混流
   public demux(
     data: Uint8Array,
     timeOffset: number,
@@ -248,7 +250,7 @@ class TSDemuxer implements Demuxer {
       len = data.length;
       this.remainderData = null;
     }
-
+    // 一个 Packet 最少是 188 字节，如果少于 188，就存下来，加在下个片段
     if (len < 188 && !flush) {
       this.remainderData = data;
       return {
@@ -260,7 +262,7 @@ class TSDemuxer implements Demuxer {
     }
 
     const syncOffset = Math.max(0, TSDemuxer.syncOffset(data));
-
+    // 把剩余不满 188 的部分存下来，放到下一个 ts 一起解析
     len -= (len + syncOffset) % 188;
     if (len < data.byteLength && !flush) {
       this.remainderData = new Uint8Array(
@@ -271,17 +273,30 @@ class TSDemuxer implements Demuxer {
     }
 
     // loop through TS packets
+    /**
+     * 分组格式参考：https://zh.wikipedia.org/wiki/MPEG2-TS
+     * data[start], sync byte，固定为 0x47
+     * data[str+1]，前三位分别是 Transport Error Indicator (TEI)，Payload Unit Start Indicator，Transport Priority
+     * data[str+1]后 5 位 + data[str+2] 8 位 = 13 位，为 PID
+     * data[str+3] 分别是 2位 Transport Scrambling control (TSC)，2位 Adaptation field exist，4位 Continuity counter
+     */
     for (let start = syncOffset; start < len; start += 188) {
       if (data[start] === 0x47) {
+        // 0x40 0100 0000。判断 Payload Unit Start Indicator 是否为 1
         const stt = !!(data[start + 1] & 0x40);
+        // 取 data[start + 1] 的后 5 位和 data[str+2] 的 8 位组合成 PID
         // pid is a 13-bit field starting at the last bit of TS[1]
         const pid = ((data[start + 1] & 0x1f) << 8) + data[start + 2];
+        // Adaptation field exist 适配域存在标识
         const atf = (data[start + 3] & 0x30) >> 4;
 
+        // atf： 00 保留（将来使用），第一位标记 adaptation field，第二位标记 payload
         // if an adaption field is present, its length is specified by the fifth byte of the TS packet header.
         let offset: number;
+        // 第一位为 1
         if (atf > 1) {
           offset = start + 5 + data[start + 4];
+          // 这一段代码似乎没有意义
           // continue if there is only adaptation field
           if (offset === start + 188) {
             continue;
@@ -332,6 +347,7 @@ class TSDemuxer implements Demuxer {
               id3Data.size += start + 188 - offset;
             }
             break;
+          // 0x0000, PAT 节目关联表 PID
           case 0:
             if (stt) {
               offset += data[offset] + 1;
@@ -1084,10 +1100,13 @@ function createAVCSample(
 
 function parsePAT(data, offset) {
   // skip the PSI header and parse the first PMT entry
+  // 0x1f -> 0001 1111
+  // 取 13 位
   return ((data[offset + 10] & 0x1f) << 8) | data[offset + 11];
   // logger.log('PMT PID:'  + this._pmtId);
 }
 
+// 从 TS 包中获取 PMT 的音视频 PID
 function parsePMT(data, offset, mpegSupported, isSampleAes) {
   const result = { audio: -1, avc: -1, id3: -1, isAAC: true };
   const sectionLength = ((data[offset + 1] & 0x0f) << 8) | data[offset + 2];
