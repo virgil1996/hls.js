@@ -66,6 +66,8 @@ export default class TransmuxerInterface {
       logger.log('demuxing in webworker');
       let worker;
       try {
+        // TODO: 不使用 work，方便调试
+        throw new Error('test');
         worker = this.worker = work(
           require.resolve('../demux/transmuxer-worker.ts')
         );

@@ -283,6 +283,7 @@ class TSDemuxer implements Demuxer {
     for (let start = syncOffset; start < len; start += 188) {
       if (data[start] === 0x47) {
         // 0x40 0100 0000。判断 Payload Unit Start Indicator 是否为 1
+        // 一个 ts 包往往放不下 PES 包的，那么需要截取发送，就是通过这个字段区分，如果为 1，说明这个 ts 是一个包头
         const stt = !!(data[start + 1] & 0x40);
         // 取 data[start + 1] 的后 5 位和 data[str+2] 的 8 位组合成 PID
         // pid is a 13-bit field starting at the last bit of TS[1]
@@ -302,6 +303,7 @@ class TSDemuxer implements Demuxer {
             continue;
           }
         } else {
+          // 跳过前 4 个字节（ TS 包开头的固定部分）
           offset = start + 4;
         }
         switch (pid) {
@@ -350,6 +352,9 @@ class TSDemuxer implements Demuxer {
           // 0x0000, PAT 节目关联表 PID
           case 0:
             if (stt) {
+              // 当前的 offset 跳过了 TS 包开头的固定部分，接下来的部分是数据包
+              // 数据包的第一个字节是 pointer_field（程序特殊信息指针），表示数据从哪里开始
+              // 似乎这个字节数据都是 0x00（待定）
               offset += data[offset] + 1;
             }
 
@@ -1097,7 +1102,7 @@ function createAVCSample(
     length: 0,
   };
 }
-
+// 格式和 PMT相同，但这个库并没有去循环调用获取 PMT 节目表，仅取了第一个节目出来
 function parsePAT(data, offset) {
   // skip the PSI header and parse the first PMT entry
   // 0x1f -> 0001 1111
@@ -1106,11 +1111,32 @@ function parsePAT(data, offset) {
   // logger.log('PMT PID:'  + this._pmtId);
 }
 
-// 从 TS 包中获取 PMT 的音视频 PID
+/**
+ * 从 TS 包中获取 PMT 的音视频 PID
+ * 此时的包数据
+ * 第 1 个字节为 table_id，必定为 0x00
+ * 第 2.3 个字节：
+ * - section_syntax_indicator(1bit) 段语法标志位（什么玩意？），固定为1
+ * - zero(1bit)
+ * - reserved(2bit)
+ * - section_length(12bit) 表示此段长度有多少字节
+ * 第 4.5 个字节，表示 transport_stream_id，ts的识别号
+ * 第 6 个字节：
+ * - reserved(2bit) TS 标识号
+ * - version_number(5bit) 版本号
+ * - current_next_indicator(1bit)，1 表示当前表可用
+ * 第 7 个字节，section 号
+ * 第 8 个字节，最后一个 section 号
+ * ---开始循环---
+ * 2 个字节 program_number
+ * 2 个字节 reserved(3bit), network_id(节目号为0) / program_map_PID, (13bit)
+ * ---循环结束---
+ * 4 个字节 CRC_32
+ */
 function parsePMT(data, offset, mpegSupported, isSampleAes) {
   const result = { audio: -1, avc: -1, id3: -1, isAAC: true };
   const sectionLength = ((data[offset + 1] & 0x0f) << 8) | data[offset + 2];
-  const tableEnd = offset + 3 + sectionLength - 4;
+  const tableEnd = offset + 3 + sectionLength - 4; // -1 应该是跳过了第一个字节（PID)
   // to determine where the table is, we have to figure out how
   // long the program info descriptors are
   const programInfoLength =
