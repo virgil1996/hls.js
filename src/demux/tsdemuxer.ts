@@ -291,13 +291,12 @@ class TSDemuxer implements Demuxer {
         // Adaptation field exist 适配域存在标识
         const atf = (data[start + 3] & 0x30) >> 4;
 
-        // atf： 00 保留（将来使用），第一位标记 adaptation field，第二位标记 payload
         // if an adaption field is present, its length is specified by the fifth byte of the TS packet header.
         let offset: number;
+        // atf 两位： 第一位表示是否有 Adaptation field，第二位表示是否有 payload
         // 第一位为 1
         if (atf > 1) {
           offset = start + 5 + data[start + 4];
-          // 这一段代码似乎没有意义
           // continue if there is only adaptation field
           if (offset === start + 188) {
             continue;
@@ -1112,37 +1111,38 @@ function parsePAT(data, offset) {
 }
 
 /**
- * 从 TS 包中获取 PMT 的音视频 PID
- * 此时的包数据
- * 第 1 个字节为 table_id，必定为 0x00
- * 第 2.3 个字节：
- * - section_syntax_indicator(1bit) 段语法标志位（什么玩意？），固定为1
- * - zero(1bit)
- * - reserved(2bit)
- * - section_length(12bit) 表示此段长度有多少字节
- * 第 4.5 个字节，表示 transport_stream_id，ts的识别号
- * 第 6 个字节：
- * - reserved(2bit) TS 标识号
- * - version_number(5bit) 版本号
- * - current_next_indicator(1bit)，1 表示当前表可用
- * 第 7 个字节，section 号
- * 第 8 个字节，最后一个 section 号
- * ---开始循环---
- * 2 个字节 program_number
- * 2 个字节 reserved(3bit), network_id(节目号为0) / program_map_PID, (13bit)
- * ---循环结束---
- * 4 个字节 CRC_32
+ * 解析 PMT
+ * 第1个字节是 table id
+ * 第2个字节后四位 + 第3个字节 = section length
+ * 第4，5字节表示 program number
+ * 第6，7，8个字节表示固定值，version number，section number 等信息
+ * 第9个字节的后5位 + 第10个字节 = PCR PID
+ * 第11个字节后4位 + 第12个字节 = 产品描述字节的长度
+ * 后面开始循环
+ * =====
+ * 第1个字节是 stream type，描述流类型
+ * 第2字节后5位 + 第3字节 = 流 PID
+ * 第4字节后4位 + 第5，6字节 = ES 信息长度
+ * ES 信息
+ * ====
+ * CRC32
  */
 function parsePMT(data, offset, mpegSupported, isSampleAes) {
   const result = { audio: -1, avc: -1, id3: -1, isAAC: true };
+  // 0x0f -> 0000 1111
+  // section 长度取第二个字节后四位 + 第三个字节
   const sectionLength = ((data[offset + 1] & 0x0f) << 8) | data[offset + 2];
-  const tableEnd = offset + 3 + sectionLength - 4; // -1 应该是跳过了第一个字节（PID)
+  // sectionLength 是从当前算到 CRC 32为止，
+  // 所以需要 offset +3，-4 是为了不包含 CRC32
+  const tableEnd = offset + 3 + sectionLength - 4;
   // to determine where the table is, we have to figure out how
   // long the program info descriptors are
+  // 产品描述长度
   const programInfoLength =
     ((data[offset + 10] & 0x0f) << 8) | data[offset + 11];
   // advance the offset to the first entry in the mapping table
   offset += 12 + programInfoLength;
+  // 循环 N loop
   while (offset < tableEnd) {
     const pid = ((data[offset + 1] & 0x1f) << 8) | data[offset + 2];
     switch (data[offset]) {
