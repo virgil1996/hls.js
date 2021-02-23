@@ -19,7 +19,8 @@ const defaultTestStreamUrl = testStreams[Object.keys(testStreams)[0]].url;
 const sourceURL =
   // 'https://ceph-core.bke.shopee.io/livetech-record-video-2021-01-21/live-id-46e86c832348cb49538deaa7fcd533fe-1611202248.m3u8';
   // 'https://ceph-core-nonlive.bke.shopee.io/livetech-record-video-2021-02-02/dev1-id-32fe120df76d31aa8b59ec279ece2383-1612238315.m3u8';
-  "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8";
+  // "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8";
+  'https://bitdash-a.akamaihd.net/content/sintel/hls/video/250kbit.m3u8';
 
 let demoConfig = getURLParam('demoConfig', null);
 if (demoConfig) {

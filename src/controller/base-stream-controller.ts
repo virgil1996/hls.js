@@ -298,7 +298,7 @@ export default class BaseStreamController
       targetBufferTime,
       progressCallback
     ).then((data) => {
-      // 加载 ts 后到这里
+      // 加载并解析 ts 后到这里
       if (!data) {
         // if we're here we probably needed to backtrack or are waiting for more parts
         return;

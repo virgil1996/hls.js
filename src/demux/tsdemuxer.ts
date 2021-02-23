@@ -1101,7 +1101,7 @@ function createAVCSample(
     length: 0,
   };
 }
-// 格式和 PMT相同，但这个库并没有去循环调用获取 PMT 节目表，仅取了第一个节目出来
+// 这个库没有去循环调用获取 PMT 节目表，仅取了第一个节目出来
 function parsePAT(data, offset) {
   // skip the PSI header and parse the first PMT entry
   // 0x1f -> 0001 1111
